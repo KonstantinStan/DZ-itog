@@ -7,7 +7,7 @@
     app_dir: /data/audit-svc
     app_image: "ghcr.io/{{ lookup('env', 'GITHUB_REPOSITORY') | lower }}:{{ lookup('env', 'IMAGE_TAG') }}"
     db_host_port: 5433
-    db_name: audit_svc
+    db_name: audit
     db_user: audit_svc
 
   tasks:
