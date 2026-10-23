@@ -63,7 +63,7 @@ jobs:
   deploy:
     needs: build-and-publish
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: [self-hosted, deploy]
+    runs-on: [self-hosted, Linux, X64]
     environment:
       name: production
     permissions:
