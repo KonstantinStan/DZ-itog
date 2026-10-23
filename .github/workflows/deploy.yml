@@ -84,6 +84,6 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           test -n "$ANSIBLE_VAULT_PASSWORD"
-          chmod +x deploy/vault-pass.sh
+          umask 077; printf '%s' "$ANSIBLE_VAULT_PASSWORD" > /tmp/ansible-vault-password
           cd deploy
-          ansible-playbook audit-svc.play.yml --vault-password-file ./vault-pass.sh
+          ansible-playbook audit-svc.play.yml --vault-password-file /tmp/ansible-vault-password
