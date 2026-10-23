@@ -1,0 +1,169 @@
+---
+- name: Deploy audit-svc
+  hosts: localhost
+  connection: local
+  become: true
+  vars:
+    app_dir: /data/audit-svc
+    app_image: "ghcr.io/{{ lookup('env', 'GITHUB_REPOSITORY') | lower }}:{{ lookup('env', 'IMAGE_TAG') }}"
+    db_host_port: 5433
+    db_name: audit_svc
+    db_user: audit_svc
+
+  tasks:
+    - name: Create application network
+      community.docker.docker_network:
+        name: audit-net
+        state: present
+
+    - name: Create persistent PostgreSQL volume
+      community.docker.docker_volume:
+        name: audit-postgres-data
+        state: present
+
+    - name: Ensure application directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ app_dir }}"
+        - "{{ app_dir }}/nginx"
+        - /etc/audit-svc
+
+    - name: Run PostgreSQL 17
+      community.docker.docker_container:
+        name: postgres
+        image: postgres:17
+        pull: true
+        state: started
+        restart_policy: always
+        networks:
+          - name: audit-net
+        published_ports:
+          - "127.0.0.1:{{ db_host_port }}:5432"
+        volumes:
+          - audit-postgres-data:/var/lib/postgresql/data
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: "{{ vault_postgres_password }}"
+          POSTGRES_DB: postgres
+
+    - name: Wait for PostgreSQL
+      community.docker.docker_container_exec:
+        container: postgres
+        command: pg_isready -U postgres
+      register: pg_ready
+      until: pg_ready.rc == 0
+      retries: 25
+      delay: 2
+      changed_when: false
+
+    - name: Ensure audit_svc role exists with current password
+      community.postgresql.postgresql_user:
+        login_host: 127.0.0.1
+        login_port: "{{ db_host_port }}"
+        login_user: postgres
+        login_password: "{{ vault_postgres_password }}"
+        name: "{{ db_user }}"
+        password: "{{ vault_audit_svc_password }}"
+        state: present
+      no_log: true
+
+    - name: Ensure audit database exists and is owned by audit_svc
+      community.postgresql.postgresql_db:
+        login_host: 127.0.0.1
+        login_port: "{{ db_host_port }}"
+        login_user: postgres
+        login_password: "{{ vault_postgres_password }}"
+        name: "{{ db_name }}"
+        owner: "{{ db_user }}"
+        state: present
+      no_log: true
+
+    - name: Render service configuration
+      ansible.builtin.template:
+        src: templates/config.yaml.j2
+        dest: /etc/audit-svc/config.yaml
+        owner: "1000"
+        group: "1000"
+        mode: "0640"
+      notify: Reload audit-svc configuration
+
+    - name: Run database migrations before application deployment
+      community.docker.docker_container:
+        name: audit-svc-migrate
+        image: "{{ app_image }}"
+        pull: true
+        state: started
+        detach: false
+        cleanup: true
+        networks:
+          - name: audit-net
+        volumes:
+          - /etc/audit-svc/config.yaml:/etc/audit-svc/config.yaml:ro
+        command: ["python", "-c", "from audit_svc.migrate import main; main()"]
+      changed_when: false
+
+    - name: Run audit-svc
+      community.docker.docker_container:
+        name: audit-svc
+        image: "{{ app_image }}"
+        pull: true
+        state: started
+        restart_policy: always
+        networks:
+          - name: audit-net
+        volumes:
+          - /etc/audit-svc/config.yaml:/etc/audit-svc/config.yaml:ro
+        env:
+          AUDIT_SVC_CONFIG: /etc/audit-svc/config.yaml
+      register: audit_svc_container
+
+    - name: Render Nginx configuration
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
+        dest: "{{ app_dir }}/nginx/nginx.conf"
+        mode: "0644"
+      register: nginx_config
+
+    - name: Run Nginx
+      community.docker.docker_container:
+        name: nginx
+        image: nginx:alpine
+        state: started
+        restart_policy: always
+        networks:
+          - name: audit-net
+        published_ports:
+          - "8088:8088"
+        volumes:
+          - "{{ app_dir }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
+      register: nginx_container
+
+    - name: Reload Nginx when its config changes
+      community.docker.docker_container_exec:
+        container: nginx
+        command: nginx -s reload
+      when: nginx_config.changed and not nginx_container.changed
+
+    - name: Run nginx-prometheus-exporter
+      community.docker.docker_container:
+        name: nginx-exporter
+        image: nginx/nginx-prometheus-exporter:1.4
+        pull: true
+        state: started
+        restart_policy: always
+        networks:
+          - name: audit-net
+        published_ports:
+          - "9113:9113"
+        command:
+          - --nginx.scrape-uri=http://nginx:8089/stub_status
+
+  handlers:
+    - name: Reload audit-svc configuration
+      community.docker.docker_container_exec:
+        container: audit-svc
+        command: >-
+          python -c "import urllib.request; req = urllib.request.Request('http://127.0.0.1:8080/reload', method='POST'); urllib.request.urlopen(req, timeout=5)"

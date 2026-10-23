@@ -1,0 +1,4 @@
+app_network: audit-net
+app_data_dir: /data/audit-svc
+app_image_tag: "{{ lookup('env', 'IMAGE_TAG') | default('latest', true) }}"
+app_image: "ghcr.io/{{ lookup('env', 'GITHUB_REPOSITORY') | lower }}:{{ app_image_tag }}"

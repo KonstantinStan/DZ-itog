@@ -1,0 +1,29 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+.cache/
+
+# Tests and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+server.tar.gz
+
+# Local environment variables and test config
+.env
+config.test.yaml
+
+# Ansible Vault secrets and local password files
+deploy/vault-pass.sh
+deploy/inventories/**/vault.yml.backup
+
+# Generated test reports
+report.xml
