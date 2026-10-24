@@ -1,0 +1,54 @@
+## Результаты проверок
+
+### Идемпотентность Ansible
+Повторный запуск playbook: ok=14, changed=0, unreachable=0, failed=0, skipped=1.
+
+### Проверки Nginx
+/reload            404
+/reload?x=1        404
+//reload           404
+/%72eload          404
+
+### Контейнеры и опубликованные порты
+NAMES                PORTS
+nginx-exporter       0.0.0.0:9113->9113/tcp
+audit-svc            8080/tcp
+postgres             127.0.0.1:5433->5432/tcp
+grafana              0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+prometheus           0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp
+postgres17-inspect   
+nginx                80/tcp, 0.0.0.0:8088->8088/tcp
+
+### nginx-exporter
+nginx_up 1
+
+### Prometheus targets
+audit-svc up http://nginx:8088/metrics
+nginx up http://nginx-exporter:9113/metrics
+
+### Метрики audit-svc через Nginx
+# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+python_gc_objects_collected_total{generation="0"} 1401.0
+python_gc_objects_collected_total{generation="1"} 175.0
+python_gc_objects_collected_total{generation="2"} 0.0
+# HELP python_gc_objects_uncollectable_total Uncollectable objects found during GC
+# TYPE python_gc_objects_uncollectable_total counter
+python_gc_objects_uncollectable_total{generation="0"} 0.0
+python_gc_objects_uncollectable_total{generation="1"} 0.0
+python_gc_objects_uncollectable_total{generation="2"} 0.0
+# HELP python_gc_collections_total Number of times this generation was collected
+# TYPE python_gc_collections_total counter
+python_gc_collections_total{generation="0"} 75.0
+python_gc_collections_total{generation="1"} 6.0
+python_gc_collections_total{generation="2"} 0.0
+# HELP python_info Python platform information
+# TYPE python_info gauge
+python_info{implementation="CPython",major="3",minor="12",patchlevel="15",version="3.12.15"} 1.0
+# HELP process_virtual_memory_bytes Virtual memory size in bytes.
+# TYPE process_virtual_memory_bytes gauge
+process_virtual_memory_bytes 1.35176192e+08
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 5.097472e+07
+# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
